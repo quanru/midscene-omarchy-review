@@ -52,3 +52,19 @@ The App needs only Actions write permission on `quanru/doubao-say` for dispatch.
 This repository's own `GITHUB_TOKEN` reads the approved request and comments
 back on it. The App does not host a desktop or give the plugin author access
 to model credentials.
+
+### Dispatch App setup
+
+1. Create a GitHub App owned by `quanru` with **Actions: Read and write** as
+   its only requested repository permission. It needs no webhook subscription.
+2. Install it on **Selected repositories**, selecting only `doubao-say`.
+3. Set this repository variable `REVIEW_DISPATCH_APP_CLIENT_ID` to the App's
+   client ID. Store its generated private key as this repository secret
+   `REVIEW_DISPATCH_APP_PRIVATE_KEY`.
+4. After reviewing a valid request, add `approved-to-run`. The workflow first
+   confirms that the plugin repository matches the linked official Issue and
+   that the exact commit exists, then dispatches the worker. It posts the run
+   and final status here. A maintainer inspects the native report before
+   commenting on the official Issue.
+
+Do not put a personal GitHub OAuth token in this public repository's Secrets.
