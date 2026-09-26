@@ -5,13 +5,17 @@ on:
     types: [opened, edited]
 
 permissions:
-  contents: read
+  contents: write
   issues: write
+  pages: write
+  id-token: write
 
 jobs:
   validate:
-    if: startsWith(github.event.issue.title, '[Visual review] ')
+    if: startsWith(github.event.issue.title, '[Visual review] ') && !contains(github.event.issue.labels.*.name, 'run-started')
     runs-on: ubuntu-latest
+    outputs:
+      valid: ${{ steps.validate.outcome == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -20,17 +24,22 @@ jobs:
         id: validate
         continue-on-error: true
         run: node scripts/validate-request.mjs
-      - name: Mark valid requests for maintainer review
+      - name: Queue valid requests
         if: steps.validate.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: gh issue edit "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label ready-for-maintainer --remove-label needs-request-fix
+        run: gh issue edit "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label ready-to-run --remove-label needs-request-fix
       - name: Mark invalid requests
         if: steps.validate.outcome == 'failure'
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
-          gh issue edit "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label needs-request-fix --remove-label ready-for-maintainer
+          gh issue edit "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label needs-request-fix --remove-label ready-to-run
           exit 1
+  dispatch:
+    needs: validate
+    if: needs.validate.outputs.valid == 'true' && vars.REVIEW_DISPATCH_APP_CLIENT_ID != ''
+    uses: ./.github/workflows/dispatch-review.yml
+    secrets: inherit

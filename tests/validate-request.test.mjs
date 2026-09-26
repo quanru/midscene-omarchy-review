@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateRequest } from '../scripts/validate-request.mjs';
-import { officialRepository } from '../scripts/dispatch-request.mjs';
+import { matchesOfficialSnapshot, officialRepository } from '../scripts/dispatch-request.mjs';
 
 const valid = `### Official Marketplace Issue URL
 
@@ -47,4 +47,16 @@ test('matches the repository declared in a Marketplace submission or update', ()
   const body = '### Verification action\n\nVerify and publish a newer upstream commit\n\n### Repository URL\n\nhttps://github.com/manateelazycat/omarchy-workspace-gallery\n\n### Target commit\n\n486a431858f05e37ba3fcb0cc7fb29efc563e671';
   assert.equal(officialRepository(body), 'manateelazycat/omarchy-workspace-gallery');
   assert.throws(() => officialRepository(body.replace('github.com/', 'github.com.attacker.test/')), /invalid/);
+});
+
+test('requires the official bot baseline at the exact commit and plugin ID', () => {
+  const request = validateRequest(valid);
+  const snapshot = { repository: request.repository, commitSha: request.sha, pluginIds: [request.id], outcome: 'passed' };
+  const comment = (user = 'github-actions[bot]') => ({
+    user: { login: user },
+    body: `<!-- marketplace-security-baseline:v4 ${Buffer.from(JSON.stringify(snapshot)).toString('base64')} -->`,
+  });
+  assert.equal(matchesOfficialSnapshot([comment()], request), true);
+  assert.equal(matchesOfficialSnapshot([comment('attacker')], request), false);
+  assert.equal(matchesOfficialSnapshot([comment()], { ...request, sha: 'a'.repeat(40) }), false);
 });

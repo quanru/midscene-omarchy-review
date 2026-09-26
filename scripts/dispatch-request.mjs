@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { validateRequest } from './validate-request.mjs';
 
@@ -16,6 +16,25 @@ export function officialRepository(body) {
     throw new Error('Official Marketplace repository URL is invalid');
   }
   return url.pathname.replace(/^\/|\/$/g, '').toLowerCase();
+}
+
+export function matchesOfficialSnapshot(comments, request) {
+  const marker = /<!-- marketplace-security-baseline:v4 ([A-Za-z0-9+/=]+) -->/;
+  return comments.some((entry) => {
+    if (entry.user?.login !== 'github-actions[bot]') return false;
+    const match = marker.exec(entry.body || '');
+    if (!match) return false;
+    let snapshot;
+    try {
+      snapshot = JSON.parse(Buffer.from(match[1], 'base64').toString('utf8'));
+    } catch {
+      return false;
+    }
+    return snapshot.repository?.toLowerCase() === request.repository.toLowerCase() &&
+      snapshot.commitSha?.toLowerCase() === request.sha.toLowerCase() &&
+      snapshot.pluginIds?.includes(request.id) &&
+      ['passed', 'review-required'].includes(snapshot.outcome);
+  });
 }
 
 async function api(url, token, options = {}) {
@@ -40,9 +59,10 @@ const comment = (repo, number, token, body) => api(
 
 async function dispatch() {
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
-  if (event.action !== 'labeled' || event.label?.name !== 'approved-to-run' ||
+  if (!(['opened', 'edited'].includes(event.action) ||
+      (event.action === 'labeled' && ['ready-to-run', 'approved-to-run'].includes(event.label?.name))) ||
       !event.issue?.title?.startsWith('[Visual review] ')) {
-    throw new Error('Expected an approved visual review Issue');
+    throw new Error('Expected a valid visual review Issue event');
   }
   const request = validateRequest(event.issue.body || '');
   const portalToken = process.env.GITHUB_TOKEN;
@@ -55,14 +75,37 @@ async function dispatch() {
     portalToken,
   );
   if (official.pull_request || official.state !== 'open') throw new Error('Official submission Issue must be open');
+  if (event.issue.user?.login !== official.user?.login && event.issue.user?.login !== 'quanru') {
+    throw new Error('Review request must be opened by the official Issue author or portal maintainer');
+  }
   if (officialRepository(official.body || '') !== request.repository.toLowerCase()) {
     throw new Error('Plugin repository does not match the official Marketplace Issue');
+  }
+  const comments = await api(
+    `https://api.github.com/repos/omacom/omarchy-plugin-marketplace/issues/${officialNumber}/comments?per_page=100`,
+    portalToken,
+  );
+  if (!matchesOfficialSnapshot(comments, request)) {
+    throw new Error('No matching official security baseline for repository, plugin ID, and exact commit');
   }
   const commit = await api(
     `https://api.github.com/repos/${request.repository}/commits/${request.sha}`,
     portalToken,
   );
   if (commit.sha.toLowerCase() !== request.sha.toLowerCase()) throw new Error('Exact plugin commit was not found');
+
+  const currentIssue = await api(
+    `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/issues/${event.issue.number}`,
+    portalToken,
+  );
+  if (currentIssue.labels.some((label) => label.name === 'run-started') && event.label?.name !== 'approved-to-run') {
+    throw new Error('This request already started a desktop run');
+  }
+  await api(
+    `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/issues/${event.issue.number}/labels`,
+    portalToken,
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ labels: ['run-started'] }) },
+  );
 
   const payload = {
     ref: workerRef,
@@ -81,6 +124,9 @@ async function dispatch() {
     { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) },
   );
   if (!run?.run_url || !run?.html_url) throw new Error('Workflow dispatch did not return a run URL');
+  const runId = Number(run.workflow_run_id || run.run_url.match(/\/runs\/(\d+)$/)?.[1]);
+  if (!Number.isSafeInteger(runId) || runId < 1) throw new Error('Workflow dispatch returned no run ID');
+  appendFileSync(process.env.GITHUB_OUTPUT, `run_id=${runId}\nplugin_repository=${request.repository}\nplugin_sha=${request.sha}\n`);
   await comment(process.env.GITHUB_REPOSITORY, event.issue.number, portalToken,
     `Started the [real Omarchy desktop CI run](${run.html_url}) for \`${request.repository}@${request.sha}\`. This is a visual smoke check, not a Marketplace verification decision.`);
 
