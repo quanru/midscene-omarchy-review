@@ -24,8 +24,12 @@ maintainer review.
 The request form is live. A repository-local Actions workflow validates the
 form and marks valid Issues `ready-for-maintainer`. The worker is in a separate
 repository because its Omarchy VM image and model credentials are private to
-that repository. Until a narrowly scoped GitHub App dispatches that worker,
-the maintainer manually starts it after checking the public request:
+that repository. After checking the official Issue and request, a maintainer
+adds `approved-to-run`. The dispatch workflow uses a GitHub App token scoped to
+the worker repository and its Actions permission; it links the worker run and
+its result back to this Issue. The App must be installed and its client ID and
+private key configured before that label can be used. Until then, the
+maintainer manually starts the worker:
 
 ```sh
 gh workflow run midscene-omarchy-4.0.3.yml \
@@ -44,6 +48,7 @@ exact commit before posting a factual summary. A green visual assertion alone
 does not establish that every control or persistence path works. Do not claim
 Marketplace approval or security assurance.
 
-The future App needs access only to read approved review requests, dispatch
-the worker workflow, and post evidence links. It will not host a desktop or
-give the plugin author access to model credentials.
+The App needs only Actions write permission on `quanru/doubao-say` for dispatch.
+This repository's own `GITHUB_TOKEN` reads the approved request and comments
+back on it. The App does not host a desktop or give the plugin author access
+to model credentials.
