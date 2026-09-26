@@ -10,7 +10,8 @@ their own repository. The CI worker is currently hosted by the
 1. Submit the plugin to the [Omarchy plugin marketplace](https://github.com/omacom/omarchy-plugin-marketplace/issues/new/choose).
 2. [Open a visual review request](https://github.com/quanru/midscene-omarchy-review/issues/new?template=plugin-review.yml) here. Include the official Issue URL, public plugin repository, full commit SHA, manifest ID, IPC method that opens a visible surface, and one observable result.
 3. A maintainer checks the request and runs that exact commit in a disposable
-   Omarchy VM on GitHub Actions. The result, native Midscene report, and
+   Omarchy VM on GitHub Actions. Use `summon` for a panel, overlay, or menu,
+   or the plugin's IPC method for a bar widget. The result, native Midscene report, and
    screenshots are linked on your request. If the evidence is useful and
    scoped correctly, we also link it on the official submission Issue.
 

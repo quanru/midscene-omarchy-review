@@ -42,8 +42,8 @@ body:
     id: open_method
     attributes:
       label: Open IPC method
-      description: The omarchy-shell plugin method that opens the visible UI
-      value: open
+      description: Use summon for a panel, overlay, or menu; use the plugin IPC method (often open) for a bar widget
+      value: summon
     validations:
       required: true
   - type: textarea
